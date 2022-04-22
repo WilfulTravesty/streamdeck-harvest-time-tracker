@@ -1,0 +1,116 @@
+{
+    "Actions": [
+      {
+        "Icon": "resources/actionIcon",
+        "Name": "Harvest Track Task",
+        "States": [
+          {
+            "Image": "timer/actionImageOff",
+            "TitleAlignment": "bottom",
+            "FontSize": "15"
+          },
+          {
+            "Image": "timer/actionImageOn",
+            "TitleAlignment": "bottom",
+            "FontSize": "15"
+          }
+        ],
+        "SupportedInMultiActions": true,
+        "PropertyInspectorPath": "timer/index_pi.html",
+        "Tooltip": "Time tracking using Harvest",
+        "UUID": "com.wolfzoo.harvest.sdPlugin"
+      },
+
+      {
+        "Icon": "resources/actionIcon",
+        "Name": "Harvest Total Weekly Time",
+        "States": [
+          {
+            "Image": "weekly/actionImageOff",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          },
+          {
+            "Image": "weekly/actionImageOn",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          }
+        ],
+        "SupportedInMultiActions": false,
+        "PropertyInspectorPath": "weekly/index_pi.html",
+        "Tooltip": "Total Weekly Time",
+        "UUID": "com.wolfzoo.harvest.sdPlugin.total.week"
+      },
+
+      {
+        "Icon": "resources/actionIcon",
+        "Name": "Harvest Total Project Time",
+        "States": [
+          {
+            "Image": "project/actionImage",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          }
+        ],
+        "SupportedInMultiActions": false,
+        "PropertyInspectorPath": "project/index_pi.html",
+        "Tooltip": "Total Project Weekly Time",
+        "UUID": "com.wolfzoo.harvest.sdPlugin.total.project"
+      },
+
+      {
+        "Icon": "resources/actionIcon",
+        "Name": "Harvest Total Daily Time",
+        "States": [
+          {
+            "Image": "daily/actionImageOff",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          },
+          {
+            "Image": "daily/actionImageOn",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          }
+        ],
+        "SupportedInMultiActions": false,
+        "PropertyInspectorPath": "daily/index_pi.html",
+        "Tooltip": "Total Daily Time",
+        "UUID": "com.wolfzoo.harvest.sdPlugin.total.day"
+      },
+
+      {
+        "Icon": "resources/actionIcon",
+        "Name": "Harvest Total Client Time",
+        "States": [
+          {
+            "Image": "client/actionImage",
+            "TitleAlignment": "middle",
+            "FontSize": "14"
+          }
+        ],
+        "SupportedInMultiActions": false,
+        "PropertyInspectorPath": "client/index_pi.html",
+        "Tooltip": "Total Client Time",
+        "UUID": "com.wolfzoo.harvest.sdPlugin.total.client"
+      }
+
+    ],
+    "Author": "wolf",
+    "Description": "Time tracking using the Elgato Stream Deck and Harvest",
+    "Name": "Harvest",
+    "Icon": "resources/pluginIcon",
+    "Version": "1.0",
+    "CodePath": "index.html",
+    "PropertyInspectorPath": "timer/index_pi.html",
+    "OS": [
+      {
+          "Platform": "windows",
+          "MinimumVersion" : "10"
+      }
+    ],
+    "SDKVersion": 2,
+    "Software": {
+      "MinimumVersion" : "5.0"
+    }
+}

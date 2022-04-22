@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8"/>
+    <title>Harvest Property Inspector</title>
+    <link rel="stylesheet" href="../sdpi.css">
+    <script src="index_pi.js"></script>
+
+    <style>
+        .hidden {
+            display: none;
+        }
+
+        /* The next three are target that .hidden gets applied to. Do not apply any styling to these. */
+        .validAccess {
+        }
+
+        .invalidAccess {
+        }
+    </style>
+</head>
+
+<body>
+<div class="sdpi-wrapper">
+    <details class="message caution">
+        <summary>Leave the Title field above empty!</summary>
+    </details>
+
+    <div class="sdpi-item">
+        <div class="sdpi-item-label">Account ID</div>
+        <input class="sdpi-item-value" type="text" id="accountId" pattern="[0-9]+" placeholder="Enter your Account ID"
+               onchange="setAccountId()" required/>
+    </div>
+
+    <div class="sdpi-item">
+        <div class="sdpi-item-label">API Token</div>
+        <input class="sdpi-item-value" type="text" id="accessToken" pattern="[a-z0-9]+"
+               placeholder="Enter your Access Token" onchange="setAccessToken()" required/>
+    </div>
+
+    <div class="sdpi-item invalidAccess" id="apiTokenError">
+        <details class="message caution">
+            <summary>Access Token is invalid!</summary>
+        </details>
+    </div>
+
+    <div class="sdpi-item invalidAccess" id="accessTokenMoreInfo">
+        <details>
+            <summary>More Info</summary>
+            <p>To create an access token, visit the Developers section of Harvest ID at
+                <a onclick="openPage('https://id.getharvest.com/developers')">https://id.getharvest.com/developers</a>.
+                Click on <i>Create new personal access token</i>, enter a name, then click the green button.
+                Choose which account you want to control, then copy the <i>Account ID</i> and <i>Your token</i> into the
+                fields above.
+            </p>
+        </details>
+    </div>
+
+    <hr>
+
+    <div class="sdpi-item validAccess" id="labelWrapper" type="field">
+        <div class="sdpi-item-label">Button Label</div>
+        <input class="sdpi-item-value" id="label" placeholder="Label" onChange="setLabel()"/>
+    </div>
+
+    <div class="sdpi-item validAccess" type="field">
+        <div class="sdpi-item-label">ID:</div>
+        <div class="sdpi-item-value" id="idField"></div>
+    </div>
+</div>
+</body>
+
+</html>
