@@ -29,32 +29,43 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
         console.log("incoming action " + event + " for " + action);
 
         switch (event) {
-            case 'keyDown':
-                console.log("pressed " + payload["settings"].label);
-                toggleButtonState(context = context, settings = payload["settings"]).then(r => {
+            case 'keyDown': {
+                const settings = payload["settings"]
+                console.log("pressed " + settings["label"]);
+                toggleButtonState(context, settings).then(r => {
+                    // nothing
                 });
+            }
                 break
 
-            case 'willAppear':
+            case 'willAppear': {
+                const settings = payload["settings"]
+                const coordinates = payload["coordinates"]
                 if (!payload["isInMultiAction"]) {
-                    addButton(context, settings = payload["settings"], coordinates = payload["coordinates"]);
-                    console.log("button added to row " + (payload["coordinates"]["row"] + 1) + " column " + (payload["coordinates"]["column"] + 1));
+                    addButton(context, settings, coordinates);
+                    console.log("button added to row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
                 }
+            }
                 break
 
-            case 'willDisappear':
-                console.log("button removed from row " + (payload["coordinates"]["row"] + 1) + " column " + (payload["coordinates"]["column"] + 1));
+            case 'willDisappear': {
+                const coordinates = payload["coordinates"]
+                console.log("button removed from row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
                 if (!payload["isInMultiAction"]) removeButton(context);
+            }
                 break
 
-            case 'didReceiveSettings': // anything could have changed, pull it, add it, and refresh.
-                console.log(">>> received settings for button " + context + " labeled " + JSON.stringify(payload["settings"]["label"]));
+            case 'didReceiveSettings': { // anything could have changed, pull it, add it, and refresh.
+                const settings = payload["settings"]
+                const coordinates = payload["coordinates"]
+                console.log(">>> received settings for button " + context + " labeled " + JSON.stringify(settings["label"]));
                 if (!payload["isInMultiAction"]) {
                     removeButton(context);
-                    addButton(context, settings = payload["settings"], coordinates = payload["coordinates"]);
+                    addButton(context, settings, coordinates);
                     refreshButtons();
                     console.log("plugin received settings: " + JSON.stringify(payload["settings"]));
                 }
+            }
                 break
 
             case 'propertyInspectorDidDisappear':
@@ -80,6 +91,7 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
  *
  * @param {string} context
  * @param {object} settings
+ *
  * @returns {Promise<number|*>}
  */
 async function toggleButtonState(context, settings) {
@@ -88,7 +100,7 @@ async function toggleButtonState(context, settings) {
 
     if (settings["type"] !== "timer") return Promise.resolve(0);
 
-    return getCurrentActiveHarvestTimeEntry(accountId = accountId, accessToken = accessToken, arguments = "is_running=true")
+    return getCurrentActiveHarvestTimeEntry(accountId, accessToken, "is_running=true")
         .then(response => {
             if (response.status !== 200) {
                 //console.log(response.text());
@@ -103,17 +115,17 @@ async function toggleButtonState(context, settings) {
             if (entryData["time_entries"].length === 0) {
                 // Nothing is running, so start one
                 console.log("no task is currently running, so start a new one");
-                startHarvestTask(context = context, settings = settings).then(v => refreshButtons());
+                startHarvestTask(context, settings).then(v => refreshButtons());
 
             } else if (entryData["time_entries"][0]["project"]["id"] == settings["projectId"] && entryData["time_entries"][0]["task"]["id"] == settings["taskId"]) {
                 // The one running is "this one", stop it
                 console.log("have data matching an active button, so stop it");
-                stopHarvestTask(context = context, settings = settings, timeId = entryData["time_entries"][0]["id"]).then(v => refreshButtons());
+                stopHarvestTask(context, settings, entryData["time_entries"][0]["id"]).then(v => refreshButtons());
 
             } else {
                 // Some other one is running. Just start the new one, old one will stop.
                 console.log("running task does not match this button task, so start a new one");
-                startHarvestTask(context = context, setting = settings).then(v => refreshButtons());
+                startHarvestTask(context, settings).then(v => refreshButtons());
             }
         })
         .catch(error => {
@@ -122,8 +134,13 @@ async function toggleButtonState(context, settings) {
             currentButtons.forEach((settings, context) => {
                 if (settings == undefined || settings["type"] !== "timer") return;
                 if (accountId == settings['accountId']) {
-                    updateButton(context = context, hours = 0, label = settings["label"], isActive = false);
-                    showAlert(context = context, reason = `task time fetch failed with error ${error}`);
+                    updateButton(context, {
+                        hours: 0,
+                        label: settings["label"],
+                        state: 0,
+                        showTime: false
+                    });
+                    showAlert(context, `task time fetch failed with error ${error}`);
                 }
             })
         })
@@ -165,7 +182,7 @@ function addButton(context, settings, coordinates) {
     console.log(`added button ${context} with label '${settings["label"]}' and settings ${JSON.stringify(settings)}`);
     currentButtons.set(context, settings);
     //setTitle(context, `loading\n\n${settings["label"]}`);
-    refreshButtonFromCache(row = settings["row"], column = settings["column"]);
+    refreshButtonFromCache(settings["row"], settings["column"]);
     initPolling().then(r => {
         // nothing
     });
@@ -205,13 +222,17 @@ async function initPolling() {
  *
  * @param {string} accountId
  * @param {array} totals
- * @param {boolean} active - are there any active tasks on this account
  * @param {boolean} isLastAccount boolean
  * @param {number | null} row may be null, else only update button in the specified row and column
  * @param {number | null} column may be null, else only update button in the specified row and column
  */
-function setTotalButtonLabels(accountId, totals, active, isLastAccount, row, column) {
+function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = {}) {
     let json = cache[`entriesPayload-${accountId}`];
+
+    let accountActive = false;
+    json["time_entries"].forEach(entry => {
+        if (entry["is_running"]) accountActive = true;
+    })
 
     json["time_entries"].forEach(entry => {
         let hours = entry["hours"];
@@ -261,8 +282,14 @@ function setTotalButtonLabels(accountId, totals, active, isLastAccount, row, col
             }
             //console.log("total hours = " + value + " for " + settings["type"] + " " + key);
             let label = settings["label"];
-            console.log(`label1 = "${label}" for ${active} ${context}`);
-            updateButton(context = context, hours = value, label = label, isActive = active, sep = "\n");
+            //console.log(`label1 = "${label}" for ${accountActive} ${context}`);
+            updateButton(context, {
+                hours: value,
+                label: label,
+                state: accountActive ? 1 : 0,
+                showTime: true,
+                sep: "\n"
+            });
         }
     })
 
@@ -277,8 +304,14 @@ function setTotalButtonLabels(accountId, totals, active, isLastAccount, row, col
 
             //console.log(`total hours = ${totals["weeklyHours"]} for ${settings["type"]}`);
             let label = settings["label"];
-            console.log(`label2 = "${label}" for ${active} ${context}`);
-            updateButton(context = context, hours = totals["weeklyHours"], label = label, isActive = active, sep = "\n");
+            //console.log(`label2 = "${label}" for ${accountActive} ${context}`);
+            updateButton(context, {
+                hours: totals["weeklyHours"],
+                label: label,
+                state: accountActive ? 1 : 0,
+                showTime: true,
+                sep: "\n"
+            });
         })
     }
 }
@@ -308,11 +341,21 @@ function setTaskButtonLabels(accountId, row, column) {
                 }
 
                 if (accountId == settings["accountId"] && entryData["project"]["id"] == settings["projectId"] && entryData["task"]["id"] == settings["taskId"]) {
-                    /////////console.log("button " + settings.label + " is on")
-                    updateButton(context, entryData["hours"], settings["label"], isActive = true);
+                    //console.log("button " + settings.label + " is on")
+                    updateButton(context, {
+                        hours: entryData["hours"],
+                        label: settings["label"],
+                        state: 1,
+                        showTime: true
+                    });
                 } else { //if not, make sure it's 'off'
                     //console.log("button " + settings.label + " is off")
-                    updateButton(context, 0, settings["label"], isActive = false);
+                    updateButton(context, {
+                        hours: 0,
+                        label: settings["label"],
+                        state: 0,
+                        showTime: false
+                    });
                 }
             }
         })
@@ -329,7 +372,12 @@ function setTaskButtonLabels(accountId, row, column) {
                 // Only process configured, individual task timer buttons here
                 if (accountId == settings["accountId"]) {
                     //console.log("button " + settings.label + " is off")
-                    updateButton(context, 0, settings["label"], isActive = false)
+                    updateButton(context, {
+                        hours: 0,
+                        label: settings["label"],
+                        state: 0,
+                        showTime: false
+                    })
                 }
             }
         })
@@ -360,14 +408,22 @@ function refreshButtonFromCache(row, column) {
             if (cache[`entriesPayload-${accountId}`] !== undefined) {
                 //console.log("calling cached setTotalButtonLabels()");
                 accountCounter++;
-                setTotalButtonLabels(accountId = accountId, totals = totals, active = false,
-                    isLastAccount = (cache["accountCount"] === accountCounter), row = row, column = column);
+                setTotalButtonLabels(accountId, {
+                    totals: totals,
+                    isLastAccount: (cache["accountCount"] === accountCounter),
+                    row: row, column: column
+                });
             } else {
                 currentButtons.forEach((settings, context) => {
                     if (settings == undefined || settings["type"] !== "timer") return;
                     if (row !== settings["row"] || column != settings["column"]) return;
                     if (accountId == settings['accountId']) {
-                        updateButton(context = context, hours = 0, label = settings['label'], isActive = false);
+                        updateButton(context, {
+                            hours: 0,
+                            label: settings['label'],
+                            state: 0,
+                            showTime: false
+                        });
                     }
                 })
             }
@@ -384,7 +440,12 @@ function refreshButtonFromCache(row, column) {
                 if (settings == undefined || settings["type"] !== "timer") return;
                 if (row !== settings["row"] || column != settings["column"]) return;
                 if (accountId == settings['accountId']) {
-                    updateButton(context, 0, settings["label"], isActive = true)
+                    updateButton(context, {
+                        hours: 0,
+                        label: settings["label"],
+                        state: 1,
+                        showTime: true
+                    })
                 }
             })
         }
@@ -437,10 +498,9 @@ function refreshButtons() {
 
         // Process each account, then find buttons that use data from that account, while keeping up the weekly total
         let accountCounter = 0;
-        let running = false;
         accounts.forEach((accessToken, accountId) => {
             //console.log(`processing account ${accountId}`);
-            const headers = getHeaders(accountId, accessToken);
+            const headers = getHeaders(accountId = accountId, accessToken = accessToken);
 
             const url = `${harvestBaseUrl}/time_entries?from=${from}&to=${to}&per_page=100`;
             console.log(`totals GET ${url}`);
@@ -459,8 +519,10 @@ function refreshButtons() {
                     cache[`entriesPayload-${accountId}`] = json;
                     //console.log("calling setTotalButtonLabels()");
                     accountCounter++;
-                    if (json["is_active"] === true) running = true
-                    setTotalButtonLabels(accountId, totals, accounts.size === accountCounter);
+                    setTotalButtonLabels(accountId, {
+                        totals: totals,
+                        isLastAccount: (accounts.size === accountCounter)
+                    });
                 })
                 .catch(error => {
                     console.log(`url fetch failed: ${error}`);
@@ -469,7 +531,12 @@ function refreshButtons() {
                     currentButtons.forEach((settings, context) => {
                         if (settings == undefined || settings["type"] !== "timer") return;
                         if (accountId == settings['accountId']) {
-                            updateButton(context, 0, "ERROR", isActive = false);
+                            updateButton(context, {
+                                hours: 0,
+                                label: "ERROR",
+                                state: 0,
+                                showTime: false
+                            });
                             showAlert(context);
                         }
                     })
@@ -522,7 +589,12 @@ function refreshButtons() {
                 currentButtons.forEach((settings, context) => {
                     if (settings == undefined || settings["type"] !== "timer") return;
                     if (accountId == settings['accountId']) {
-                        updateButton(context, 0, settings["label"], isActive = false)
+                        updateButton(context, {
+                            hours: 0,
+                            label: settings["label"],
+                            state: 0,
+                            showTime: false
+                        })
                         showAlert(context, `task time fetch failed with error ${error}`);
                     }
                 })
@@ -571,7 +643,12 @@ async function startHarvestTask(context, settings) {
     let todayDate = today.getFullYear() + "-" + leadingZero(today.getMonth() + 1) + "-" + leadingZero(today.getDate());
 
     // Quickly set it to 0:00 just so it shows "active"
-    updateButton(context, 0, settings["label"], isActive = true);
+    updateButton(context, {
+        hours: 0,
+        label: settings["label"],
+        state: 1,
+        showTime: true
+    });
     let url = `${harvestBaseUrl}/time_entries`;
     return await fetch(url, {
         method: 'POST',   // returns a SINGLE time entry, not a list
@@ -593,7 +670,12 @@ async function startHarvestTask(context, settings) {
         })
         .catch(error => {
             console.log(`failed to start time entry: ${error}`);
-            updateButton(context, 0, settings["label"], isActive = false);
+            updateButton(context, {
+                hours: 0,
+                label: settings["label"],
+                state: 0,
+                showTime: false
+            });
             throw error;
         });
 }
@@ -613,7 +695,12 @@ async function stopHarvestTask(context, settings, timeId) {
     let accessToken = settings['accessToken'];
     let headers = getHeaders(accountId, accessToken)
 
-    updateButton(context, 0, settings["label"], isActive = false);
+    updateButton(context, {
+        hours: 0,
+        label: settings["label"],
+        state: 0,
+        showTime: false
+    });
     return await fetch(`${harvestBaseUrl}/time_entries/${timeId}/stop`, {method: 'PATCH', headers: headers})
         .then(response => {
             if (response.status !== 200) {
@@ -630,7 +717,12 @@ async function stopHarvestTask(context, settings, timeId) {
         })
         .catch(error => {
             console.log(`failed to start time entry: ${error}`);
-            updateButton(context, 99999, settings["label"], isActive = false);
+            updateButton(context, {
+                hours: 99999,
+                label: settings["label"],
+                state: 0,
+                showTime: false
+            });
             throw error;
         });
 }
@@ -671,15 +763,21 @@ function leadingZero(val) {
  * @param {string} context button UUID context
  * @param {number} hours float hours to display on button
  * @param {string} label text to display at bottom of button, if not null or empty string
- * @param {boolean} isActive false means "off", true means "on"
+ * @param {number} state which state {0, 1, etc} from manifest, to display button as
+ * @param {boolean} showTime true to show time + label, false to show just label
  * @param {string} sep separator between time and label (up to 3 lines supported)
  */
-function updateButton(context, hours, label, isActive = false, sep = "\n\n") {
+function updateButton(context, {hours, label, state = 0, showTime = false, sep = "\n\n"}) {
     // Set the icon to use from the defined States list in the manifest. We use
     // slot 0 when not active or only 1 icon, and slot 1 when active.
-    setState(context, isActive ? 1 : 0);
+    setState(context, state);
 
-    if (isActive === false) {
+    if (label != undefined) {
+        // replaceAll() is not supported, so allow up to 3 lines, which fills the button
+        label = label.replace("<NL>", "\n").replace("<NL>", "\n").replace("<NL>", "\n");
+    }
+
+    if (showTime === false) {
         setTitle(context, label);
     } else {
         if (hours === undefined) hours = 0.0;
@@ -687,8 +785,6 @@ function updateButton(context, hours, label, isActive = false, sep = "\n\n") {
         if (label === undefined || label === "") {
             setTitle(context, `${formatElapsed(hours)}`);
         } else {
-            // replaceAll() is not supported, so allow up to 3 lines, which fills the button
-            label = label.replace("<NL>", "\n").replace("<NL>", "\n").replace("<NL>", "\n");
             setTitle(context, `${formatElapsed(hours)}${sep}${label}`);
         }
     }
@@ -729,7 +825,7 @@ async function setTitle(context, title) {
  * @param {string} context
  * @param {string} reason logged to console
  */
-async function showAlert(context, reason) {
+async function showAlert(context, reason = "unknown") {
     if (reason) console.log(`ALERT!!! showing alert for context ${context} because ${reason}`);
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({
         event: 'showAlert', context: context
