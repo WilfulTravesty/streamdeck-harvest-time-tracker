@@ -226,7 +226,7 @@ function decToHM(decHours) {
  * Uses JSON data from global "cache" variable.
  *
  * @param {string} accountId
- * @param {array<*>>} totals
+ * @param {any} totals
  * @param {boolean} isLastAccount boolean
  * @param {number | null} row may be null, else only update button in the specified row and column
  * @param {number | null} column may be null, else only update button in the specified row and column
@@ -325,8 +325,8 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
  * Update the labels on the task buttons, from the cached data.
  *
  * @param {string} accountId
- * @param {number | null} row may be null, else only update button in the specified row and column
- * @param {number | null} column may be null, else only update button in the specified row and column
+ * @param {number | undefined} row may be undefined, else only update button in the specified row and column
+ * @param {number | undefined} column may be undefined, else only update button in the specified row and column
  */
 function setTaskButtonLabels(accountId, row, column) {
     const entries = cache[`runningPayload-${accountId}`]["time_entries"];
@@ -524,7 +524,8 @@ function refreshButtons() {
                     accountCounter++;
                     setTotalButtonLabels(accountId, {
                         totals: totals,
-                        isLastAccount: (accounts.size === accountCounter)
+                        isLastAccount: (accounts.size === accountCounter),
+                        row: undefined, column: undefined
                     });
                 })
                 .catch(error => {
@@ -582,7 +583,7 @@ function refreshButtons() {
             .then(json => {
                 cache[`runningPayload-${accountId}`] = json;
                 //console.log(`we just cached JSON ${JSON.stringify(json)}`);
-                setTaskButtonLabels(accountId);
+                setTaskButtonLabels(accountId, undefined, undefined);
             })
             .catch(error => {
                 // set all "total" buttons on this account to an error
@@ -596,7 +597,7 @@ function refreshButtons() {
                             state: 0,
                             showTime: false
                         })
-                        showAlert(context, `task time fetch failed with error ${error}`);
+                        showAlert(context, `task time fetch failed with error ${error}`).then();
                     }
                 })
             })
