@@ -215,11 +215,11 @@ async function initPolling() {
 // Button label update functions
 // ------------------------------------------------------------------------------------------------------------------
 
-function decToHM(decHours) {
-    let hrs = Math.floor(decHours);
-    let min = Math.ceil((decHours - hrs) * 60.0);
-    return hrs + ":" + min.toString(10).padStart(2, '0');
-}
+// function decToHM(decHours) {
+//     let hrs = Math.floor(decHours);
+//     let min = Math.ceil((decHours - hrs) * 60.0);
+//     return hrs + ":" + min.toString(10).padStart(2, '0');
+// }
 
 /**
  * Process all entries for this account and sum their times for each project, then update the button labels.
@@ -282,7 +282,7 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
                 value = totals["client"][key];
             }
             if (settings["type"] === "daily") {
-                key = "daily";
+                // key = "daily";
                 value = totals["dailyHours"];
             }
             //console.log("total hours = " + value + " for " + settings["type"] + " " + key);
@@ -345,7 +345,7 @@ function setTaskButtonLabels(accountId, row, column) {
                     return; // skip this forEach iteration until we find the button
                 }
 
-                if (accountId === settings["accountId"] && entryData["project"]["id"] == settings["projectId"] && entryData["task"]["id"] == settings["taskId"]) {
+                if (accountId === settings["accountId"] && entryData["project"]["id"].toString() === settings["projectId"] && entryData["task"]["id"].toString() === settings["taskId"]) {
                     //console.log("button " + settings.label + " is on")
                     updateButton(context, {
                         hours: entryData["hours"],
