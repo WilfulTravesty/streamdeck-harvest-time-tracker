@@ -132,7 +132,7 @@ async function toggleButtonState(context, settings) {
             // set all "total" buttons on this account to an error
             console.log(`failed to fetch current time entry: ${error}`);
             currentButtons.forEach((settings, context) => {
-                if (settings == undefined || settings["type"] !== "timer") return;
+                if (settings === undefined || settings["type"] !== "timer") return;
                 if (accountId == settings['accountId']) {
                     updateButton(context, {
                         hours: 0,
@@ -216,6 +216,12 @@ async function initPolling() {
 // Button label update functions
 // ------------------------------------------------------------------------------------------------------------------
 
+function decToHM(decHours) {
+    let hrs = Math.floor(decHours);
+    let min = Math.ceil((decHours - hrs) * 60.0);
+    return hrs + ":" + min.toString(10).padStart(2, '0');
+}
+
 /**
  * Process all entries for this account and sum their times for each project, then update the button labels.
  * Uses JSON data from global "cache" variable.
@@ -235,9 +241,9 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
     })
 
     json["time_entries"].forEach(entry => {
-        let hours = entry["hours"];
+        let hours = entry["rounded_hours"];
         totals["weeklyHours"] += hours;
-        //console.log(`adding ${entry["hours"]} for ${entry["project"]["name"]} ${entry["task"]["name"]} => ${totals["weeklyHours"]}`);
+        //console.log(`adding ${decToHM(hours)} for ${entry["project"]["name"]} ${entry["task"]["name"]} => ${decToHM(totals["weeklyHours"])}`);
 
         //console.log(`${entry["spent_date"]} vs ${totals["today"]}`)
         if (entry["spent_date"] === totals["today"]) {
@@ -246,12 +252,12 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
         }
 
         let projectKey = entry["project"]["id"];
-        if (totals["project"][projectKey] == undefined) totals["project"][projectKey] = 0.0;
+        if (totals["project"][projectKey] === undefined) totals["project"][projectKey] = 0.0;
         totals["project"][projectKey] += hours;
         //console.log(`adding ${hours} hours for ${projectKey}`);
 
         let clientKey = entry["client"]["id"];
-        if (totals["client"][clientKey] == undefined) totals["client"][clientKey] = 0.0;
+        if (totals["client"][clientKey] === undefined) totals["client"][clientKey] = 0.0;
         totals["client"][clientKey] += hours;
         //console.log(`adding ${hours} hours for client ${entry["client"]["name"]}`);
     })
@@ -415,7 +421,7 @@ function refreshButtonFromCache(row, column) {
                 });
             } else {
                 currentButtons.forEach((settings, context) => {
-                    if (settings == undefined || settings["type"] !== "timer") return;
+                    if (settings === undefined || settings["type"] !== "timer") return;
                     if (row !== settings["row"] || column != settings["column"]) return;
                     if (accountId == settings['accountId']) {
                         updateButton(context, {
@@ -437,7 +443,7 @@ function refreshButtonFromCache(row, column) {
             setTaskButtonLabels(accountId, row, column);
         } else {
             currentButtons.forEach((settings, context) => {
-                if (settings == undefined || settings["type"] !== "timer") return;
+                if (settings === undefined || settings["type"] !== "timer") return;
                 if (row !== settings["row"] || column != settings["column"]) return;
                 if (accountId == settings['accountId']) {
                     updateButton(context, {
@@ -500,7 +506,7 @@ function refreshButtons() {
         let accountCounter = 0;
         accounts.forEach((accessToken, accountId) => {
             //console.log(`processing account ${accountId}`);
-            const headers = getHeaders(accountId = accountId, accessToken = accessToken);
+            const headers = getHeaders(accountId, accessToken);
 
             const url = `${harvestBaseUrl}/time_entries?from=${from}&to=${to}&per_page=100`;
             console.log(`totals GET ${url}`);
@@ -529,7 +535,7 @@ function refreshButtons() {
                     cache[`entriesPayload-${accountId}`] = {"time_entries": []};
                     // set all "total" buttons on this account to an error
                     currentButtons.forEach((settings, context) => {
-                        if (settings == undefined || settings["type"] !== "timer") return;
+                        if (settings === undefined || settings["type"] !== "timer") return;
                         if (accountId == settings['accountId']) {
                             updateButton(context, {
                                 hours: 0,
@@ -587,7 +593,7 @@ function refreshButtons() {
                 // set all "total" buttons on this account to an error
                 console.log(`failed to fetch current time entry: ${error}`);
                 currentButtons.forEach((settings, context) => {
-                    if (settings == undefined || settings["type"] !== "timer") return;
+                    if (settings === undefined || settings["type"] !== "timer") return;
                     if (accountId == settings['accountId']) {
                         updateButton(context, {
                             hours: 0,
@@ -772,7 +778,7 @@ function updateButton(context, {hours, label, state = 0, showTime = false, sep =
     // slot 0 when not active or only 1 icon, and slot 1 when active.
     setState(context, state);
 
-    if (label != undefined) {
+    if (label !== undefined) {
         // replaceAll() is not supported, so allow up to 3 lines, which fills the button
         label = label.replace("<NL>", "\n").replace("<NL>", "\n").replace("<NL>", "\n");
     }
