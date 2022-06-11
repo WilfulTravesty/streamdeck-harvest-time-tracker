@@ -226,7 +226,7 @@ function decToHM(decHours) {
  * Uses JSON data from global "cache" variable.
  *
  * @param {string} accountId
- * @param {array} totals
+ * @param {array<*>>} totals
  * @param {boolean} isLastAccount boolean
  * @param {number | null} row may be null, else only update button in the specified row and column
  * @param {number | null} column may be null, else only update button in the specified row and column
@@ -443,8 +443,8 @@ function refreshButtonFromCache(row, column) {
         } else {
             currentButtons.forEach((settings, context) => {
                 if (settings === undefined || settings["type"] !== "timer") return;
-                if (row !== settings["row"] || column != settings["column"]) return;
-                if (accountId == settings['accountId']) {
+                if (row !== settings["row"] || column !== settings["column"]) return;
+                if (accountId === settings['accountId']) {
                     updateButton(context, {
                         hours: 0,
                         label: settings["label"],
@@ -515,9 +515,7 @@ function refreshButtons() {
                         //console.log(response.text());
                         throw `bad rc=${response.status}`;
                     } else {
-                        const json = response.json();
-                        //console.log(`response B ${response.status} = ${JSON.stringify(json)}`);
-                        return json;
+                        return response.json();
                     }
                 })
                 .then(json => {
@@ -535,14 +533,14 @@ function refreshButtons() {
                     // set all "total" buttons on this account to an error
                     currentButtons.forEach((settings, context) => {
                         if (settings === undefined || settings["type"] !== "timer") return;
-                        if (accountId == settings['accountId']) {
+                        if (accountId === settings['accountId']) {
                             updateButton(context, {
                                 hours: 0,
                                 label: "ERROR",
                                 state: 0,
                                 showTime: false
                             });
-                            showAlert(context);
+                            showAlert(context).then();
                         }
                     })
                 })
@@ -578,9 +576,7 @@ function refreshButtons() {
                     //console.log(response.text());
                     throw `bad rc=${response.status}`;
                 } else {
-                    const json = response.json();  // can only call ONCE per response
-                    //console.log(`response C ${response.status} =  ${JSON.stringify(json)}`);
-                    return json;
+                    return response.json();   // can only call ONCE per response
                 }
             })
             .then(json => {
@@ -593,7 +589,7 @@ function refreshButtons() {
                 console.log(`failed to fetch current time entry: ${error}`);
                 currentButtons.forEach((settings, context) => {
                     if (settings === undefined || settings["type"] !== "timer") return;
-                    if (accountId == settings['accountId']) {
+                    if (accountId === settings['accountId']) {
                         updateButton(context, {
                             hours: 0,
                             label: settings["label"],
@@ -665,9 +661,7 @@ async function startHarvestTask(context, settings) {
                 //console.log(response.text());
                 throw `bad rc=${response.status}`;
             } else {
-                const json = response.json();  // can only call ONCE per response
-                //console.log(`response D ${response.status} = ${JSON.stringify(json)}`);
-                return json;
+                return response.json();  // can only call ONCE per response
             }
         })
         .then(json => {
@@ -712,12 +706,10 @@ async function stopHarvestTask(context, settings, timeId) {
                 //console.log(response.text());
                 throw `bad rc=${response.status}`;
             } else {
-                const json = response.json();  // can only call ONCE per response
-                //console.log(`response E ${response.status} = ${JSON.stringify(json)}`);
-                return json;
+                return response.json();  // can only call ONCE per response
             }
         })
-        .then(json => {
+        .then(() => {
             console.log(`stopped timer ${timeId}`);
         })
         .catch(error => {
@@ -745,7 +737,7 @@ async function stopHarvestTask(context, settings, timeId) {
  */
 function formatElapsed(hoursRunning) {
     const hours = Math.floor(hoursRunning);
-    const minutes = parseInt(((hoursRunning - hours) * 60.0));
+    const minutes = Math.floor(((hoursRunning - hours) * 60.0));
     //const seconds = parseInt(((hoursRunning - hours - (minutes / 60.0)) * 3600));
     return `${hours}:${leadingZero(minutes)}`;
 }
@@ -775,7 +767,7 @@ function leadingZero(val) {
 function updateButton(context, {hours, label, state = 0, showTime = false, sep = "\n\n"}) {
     // Set the icon to use from the defined States list in the manifest. We use
     // slot 0 when not active or only 1 icon, and slot 1 when active.
-    setState(context, state);
+    setState(context, state).then();
 
     if (label !== undefined) {
         // replaceAll() is not supported, so allow up to 3 lines, which fills the button
@@ -783,14 +775,14 @@ function updateButton(context, {hours, label, state = 0, showTime = false, sep =
     }
 
     if (showTime === false) {
-        setTitle(context, label);
+        setTitle(context, label).then();
     } else {
         if (hours === undefined) hours = 0.0;
 
         if (label === undefined || label === "") {
-            setTitle(context, `${formatElapsed(hours)}`);
+            setTitle(context, `${formatElapsed(hours)}`).then();
         } else {
-            setTitle(context, `${formatElapsed(hours)}${sep}${label}`);
+            setTitle(context, `${formatElapsed(hours)}${sep}${label}`).then();
         }
     }
 }
