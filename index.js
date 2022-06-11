@@ -32,7 +32,7 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
             case 'keyDown': {
                 const settings = payload["settings"]
                 console.log("pressed " + settings["label"]);
-                toggleButtonState(context, settings).then(r => {
+                toggleButtonState(context, settings).then(() => {
                     // nothing
                 });
             }
@@ -106,26 +106,25 @@ async function toggleButtonState(context, settings) {
                 //console.log(response.text());
                 throw `bad rc=${response.status}`;
             } else {
-                const json = response.json();  // can only call ONCE per response
-                //console.log(`response A ${response.status} =  ${json}`);
-                return json;
+                // can only call .json() ONCE per response
+                return response.json();
             }
         })
         .then(entryData => {
             if (entryData["time_entries"].length === 0) {
                 // Nothing is running, so start one
                 console.log("no task is currently running, so start a new one");
-                startHarvestTask(context, settings).then(v => refreshButtons());
+                startHarvestTask(context, settings).then(() => refreshButtons());
 
-            } else if (entryData["time_entries"][0]["project"]["id"] == settings["projectId"] && entryData["time_entries"][0]["task"]["id"] == settings["taskId"]) {
+            } else if (entryData["time_entries"][0]["project"]["id"] === settings["projectId"] && entryData["time_entries"][0]["task"]["id"] === settings["taskId"]) {
                 // The one running is "this one", stop it
                 console.log("have data matching an active button, so stop it");
-                stopHarvestTask(context, settings, entryData["time_entries"][0]["id"]).then(v => refreshButtons());
+                stopHarvestTask(context, settings, entryData["time_entries"][0]["id"]).then(() => refreshButtons());
 
             } else {
                 // Some other one is running. Just start the new one, old one will stop.
                 console.log("running task does not match this button task, so start a new one");
-                startHarvestTask(context, settings).then(v => refreshButtons());
+                startHarvestTask(context, settings).then(() => refreshButtons());
             }
         })
         .catch(error => {
@@ -133,7 +132,7 @@ async function toggleButtonState(context, settings) {
             console.log(`failed to fetch current time entry: ${error}`);
             currentButtons.forEach((settings, context) => {
                 if (settings === undefined || settings["type"] !== "timer") return;
-                if (accountId == settings['accountId']) {
+                if (accountId === settings['accountId']) {
                     updateButton(context, {
                         hours: 0,
                         label: settings["label"],
@@ -183,7 +182,7 @@ function addButton(context, settings, coordinates) {
     currentButtons.set(context, settings);
     //setTitle(context, `loading\n\n${settings["label"]}`);
     refreshButtonFromCache(settings["row"], settings["column"]);
-    initPolling().then(r => {
+    initPolling().then(() => {
         // nothing
     });
 }
@@ -267,11 +266,11 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
         if (settings === undefined) return;  // button not configured yet
         if (settings["type"] === "timer" || settings["type"] === "weekly") return;
 
-        if (row !== undefined && column !== undefined && (row !== settings["row"] || column != settings["column"])) {
+        if (row !== undefined && column !== undefined && (row !== settings["row"] || column !== settings["column"])) {
             return; // skip this forEach iteration until we find the button
         }
 
-        if (accountId == settings['accountId']) {
+        if (accountId === settings['accountId']) {
             let key = undefined;
             let value = undefined;
             if (settings["type"] === "project") {
@@ -342,11 +341,11 @@ function setTaskButtonLabels(accountId, row, column) {
         currentButtons.forEach((settings, context) => {
             // Only process configured, individual task timer buttons here
             if (settings !== undefined && settings["type"] === "timer") {
-                if (row !== undefined && column !== undefined && (row !== settings["row"] || column != settings["column"])) {
+                if (row !== undefined && column !== undefined && (row !== settings["row"] || column !== settings["column"])) {
                     return; // skip this forEach iteration until we find the button
                 }
 
-                if (accountId == settings["accountId"] && entryData["project"]["id"] == settings["projectId"] && entryData["task"]["id"] == settings["taskId"]) {
+                if (accountId === settings["accountId"] && entryData["project"]["id"] == settings["projectId"] && entryData["task"]["id"] == settings["taskId"]) {
                     //console.log("button " + settings.label + " is on")
                     updateButton(context, {
                         hours: entryData["hours"],
@@ -371,12 +370,12 @@ function setTaskButtonLabels(accountId, row, column) {
         //Loop over all the buttons on this account and mark them "off"
         currentButtons.forEach((settings, context) => {
             if (settings !== undefined && settings["type"] === "timer") {
-                if (row !== undefined && column !== undefined && (row !== settings["row"] || column != settings["column"])) {
+                if (row !== undefined && column !== undefined && (row !== settings["row"] || column !== settings["column"])) {
                     return; // skip this forEach iteration until we find the button
                 }
 
                 // Only process configured, individual task timer buttons here
-                if (accountId == settings["accountId"]) {
+                if (accountId === settings["accountId"]) {
                     //console.log("button " + settings.label + " is off")
                     updateButton(context, {
                         hours: 0,
@@ -422,8 +421,8 @@ function refreshButtonFromCache(row, column) {
             } else {
                 currentButtons.forEach((settings, context) => {
                     if (settings === undefined || settings["type"] !== "timer") return;
-                    if (row !== settings["row"] || column != settings["column"]) return;
-                    if (accountId == settings['accountId']) {
+                    if (row !== settings["row"] || column !== settings["column"]) return;
+                    if (accountId === settings['accountId']) {
                         updateButton(context, {
                             hours: 0,
                             label: settings['label'],
