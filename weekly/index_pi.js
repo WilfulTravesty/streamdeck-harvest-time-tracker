@@ -3,8 +3,8 @@ const apiUrl = 'https://api.harvestapp.com/v2'
 // Global Web Socket
 let websocket = null;
 
-// Global Plugin Settings. Data will be saved securely to the Keychain on macOS and the 
-// Credential Store on Windows. Used to save tokens that should be available to every 
+// Global Plugin Settings. Data will be saved securely to the Keychain on macOS and the
+// Credential Store on Windows. Used to save tokens that should be available to every
 // action in the plugin.
 let globalSettings = {};
 
@@ -13,25 +13,17 @@ let settings = {};
 
 let uuid;
 
-function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegisterEvent, inInfo, inActionInfo) {
+// noinspection JSUnusedLocalSymbols
+function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegisterEvent, _inInfo, inActionInfo) {
     if (websocket) {
         websocket.close();
         websocket = null;
     }
 
     let actionInfo = JSON.parse(inActionInfo);
-    // let info = JSON.parse(inInfo);
-    // let streamDeckVersion = info['application']['version'];
-    // let pluginVersion = info['plugin']['version'];
 
     // Save global settings
     settings = actionInfo['payload']['settings'];
-
-    // Retrieve language
-    // let language = info['application']['language'];
-
-    // Retrieve action identifier
-    let action = actionInfo['action'];
 
     // Connect to Stream Deck
     websocket = new WebSocket('ws://127.0.0.1:' + inPort);
@@ -76,8 +68,6 @@ function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegist
                     settings = jsonObj['payload']['settings']
                     console.log("pi/weekly received plugin settings: " + JSON.stringify(settings))
 
-                    let isEmpty = (settings === {})
-
                     if (settings['label']) {
                         document.getElementById('label').value = settings['label'];
                     }
@@ -116,11 +106,9 @@ function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegist
                     break
 
                 case 'applicationDidLaunch':
-                    //if(!runningApps.includes(app)) {runningApps.push(app);};
                     break
 
                 case 'applicationDidTerminate':
-                    //runningApps = runningApps.filter(item => item !== app);
                     break
 
                 case 'titleParametersDidChange':
@@ -174,7 +162,7 @@ async function getWeeklyTotal() {
         .then(response => {
             if (response.status !== 200) {
                 console.log(response.text())
-                throw `bad rc=${response.status}`
+                throw new Error(`bad rc=${response.status}`);
             } else {
                 console.log(`response ${response.status}`);
                 setValidAccessToken(true);
@@ -223,13 +211,6 @@ function setValidAccessToken(isValid) {
 
 // -----------------------------------------------------------------------------------------------------------------------
 
-async function setLabel() {
-    settings["label"] = document.getElementById('label').value;
-    setButtonSettings(uuid);
-}
-
-// -----------------------------------------------------------------------------------------------------------------------
-
 function setAccountId() {
     let accountId = document.getElementById('accountId').value;
     console.log("Entered account ID " + accountId);
@@ -252,34 +233,34 @@ function setAccessToken() {
 
 // -----------------------------------------------------------------------------------------------------------------------
 
-function requestGlobalSettings(uuid) {
+function requestGlobalSettings(forUUID) {
     // Request the global settings of the plugin. Will receive a 'didReceiveGlobalSettings' event/message.
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({
         event: 'getGlobalSettings',
-        context: uuid
+        context: forUUID
     }))
     console.log("pi/weekly requested global settings");
 }
 
-function setGlobalSettings(uuid) {
+function setGlobalSettings(forUUID) {
     // Setting these will trigger a 'didReceiveGlobalSettings' event/message IN THE PLUGIN with a copy of the settings.
     if (websocket && websocket.readyState) {
         let payload = {
             accountId: globalSettings['accountId'],
             accessToken: globalSettings['accessToken']
         }
-        websocket.send(JSON.stringify({event: 'setGlobalSettings', context: uuid, payload: payload}))
+        websocket.send(JSON.stringify({event: 'setGlobalSettings', context: forUUID, payload: payload}))
         console.log("pi/weekly set global settings: " + JSON.stringify(payload));
     }
 }
 
-function requestButtonSettings(uuid) {
+function requestButtonSettings(forUUID) {
     // Request the global settings of the plugin. Will receive a 'didReceiveGlobalSettings' event/message.
-    websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({event: 'getSettings', context: uuid}))
+    websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({event: 'getSettings', context: forUUID}))
     console.log("pi/weekly requested settings");
 }
 
-function setButtonSettings(uuid) {
+function setButtonSettings(forUUID) {
     // Setting these will trigger a 'didReceiveSettings' event/message IN THE PLUGIN with a copy of the settings.
     if (websocket && websocket.readyState) {
         let payload = {
@@ -288,7 +269,7 @@ function setButtonSettings(uuid) {
             accessToken: settings['accessToken'],
             label: settings['label']
         }
-        websocket.send(JSON.stringify({event: 'setSettings', context: uuid, payload: payload}))
+        websocket.send(JSON.stringify({event: 'setSettings', context: forUUID, payload: payload}))
         console.log("pi/weekly set settings: " + JSON.stringify(payload));
     }
 }

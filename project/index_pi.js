@@ -3,8 +3,8 @@ const apiUrl = 'https://api.harvestapp.com/v2'
 // Global Web Socket
 let websocket = null;
 
-// Global Plugin Settings. Data will be saved securely to the Keychain on macOS and the 
-// Credential Store on Windows. Used to save tokens that should be available to every 
+// Global Plugin Settings. Data will be saved securely to the Keychain on macOS and the
+// Credential Store on Windows. Used to save tokens that should be available to every
 // action in the plugin.
 let globalSettings = {};
 
@@ -13,7 +13,8 @@ let settings = {};
 
 let uuid;
 
-function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegisterEvent, inInfo, inActionInfo) {
+// noinspection JSUnusedGlobalSymbols
+function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegisterEvent, _inInfo, inActionInfo) {
     console.log("HELLO!")
     if (websocket) {
         websocket.close();
@@ -21,15 +22,9 @@ function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegist
     }
 
     let actionInfo = JSON.parse(inActionInfo);
-    // let info = JSON.parse(inInfo);
-    // let streamDeckVersion = info['application']['version'];
-    // let pluginVersion = info['plugin']['version'];
 
     // Store settings
     settings = actionInfo['payload']['settings'];
-
-    // Retrieve language
-    // let language = info['application']['language'];
 
     // Retrieve action identifier
     let action = actionInfo['action'];
@@ -115,11 +110,9 @@ function connectElgatoStreamDeckSocket(inPort, inPropertyInspectorUUID, inRegist
                     break
 
                 case 'applicationDidLaunch':
-                    //if(!runningApps.includes(app)) {runningApps.push(app);};
                     break
 
                 case 'applicationDidTerminate':
-                    //runningApps = runningApps.filter(item => item !== app);
                     break
 
                 case 'titleParametersDidChange':
@@ -165,7 +158,7 @@ function update() {
 
 // throw error is invalid access token or account id
 // return true if we updated the project list
-// return false if we somehow failed to update the project list, such as empty or missing data 
+// return false if we somehow failed to update the project list, such as empty or missing data
 async function updateProjects() {
     console.log("called updateProjects()");
     let accountId = settings['accountId'];
@@ -183,7 +176,7 @@ async function updateProjects() {
         .then(response => {
             if (response.status !== 200) {
                 console.log(response.text());
-                throw `bad rc=${response.status}`;
+                throw new Error(`bad rc=${response.status}`);
             } else {
                 console.log(`response ${response.status}`);
                 setValidAccessToken(true);
@@ -292,58 +285,34 @@ function setAccessToken() {
 
 // -----------------------------------------------------------------------------------------------------------------------
 
-async function setLabel() {
-    settings["label"] = document.getElementById('label').value;
-    setButtonSettings(uuid);
-}
-
-// -----------------------------------------------------------------------------------------------------------------------
-
-function setProject() {
-    let projectId = getProjectsHandle().value;
-    console.log(`set project ID to ${projectId}`);
-    settings["projectId"] = projectId;
-    setButtonSettings(uuid);
-
-    // do not run updateProjects() here, or we will undo the user's selection
-    if (projectId) {
-        let projects = getProjectsHandle()
-        if (projects[0].value === 0) {
-            projects.remove();  // remove the <select> entry now that a selection was made
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------------------------------------------------
-
-function requestGlobalSettings(uuid) {
+function requestGlobalSettings(forUUID) {
     // Request the global settings of the plugin. Will receive a 'didReceiveGlobalSettings' event/message.
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({
         event: 'getGlobalSettings',
-        context: uuid
+        context: forUUID
     }))
     console.log("pi/project requested global settings");
 }
 
-function setGlobalSettings(uuid) {
+function setGlobalSettings(forUUID) {
     // Setting these will trigger a 'didReceiveGlobalSettings' event/message IN THE PLUGIN with a copy of the settings.
     if (websocket && websocket.readyState) {
         let payload = {
             accountId: globalSettings['accountId'],
             accessToken: globalSettings['accessToken']
         }
-        websocket.send(JSON.stringify({event: 'setGlobalSettings', context: uuid, payload: payload}))
+        websocket.send(JSON.stringify({event: 'setGlobalSettings', context: forUUID, payload: payload}))
         console.log("pi/project set global settings: " + JSON.stringify(payload));
     }
 }
 
-function requestButtonSettings(uuid) {
+function requestButtonSettings(forUUID) {
     // Request the global settings of the plugin. Will receive a 'didReceiveGlobalSettings' event/message.
-    websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({event: 'getSettings', context: uuid}))
+    websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({event: 'getSettings', context: forUUID}))
     console.log("pi/project requested settings");
 }
 
-function setButtonSettings(uuid) {
+function setButtonSettings(forUUID) {
     // Setting these will trigger a 'didReceiveSettings' event/message IN THE PLUGIN with a copy of the settings.
     if (websocket && websocket.readyState) {
         let payload = {
@@ -353,7 +322,7 @@ function setButtonSettings(uuid) {
             label: settings['label'],
             projectId: settings['projectId'],
         }
-        websocket.send(JSON.stringify({event: 'setSettings', context: uuid, payload: payload}))
+        websocket.send(JSON.stringify({event: 'setSettings', context: forUUID, payload: payload}))
         console.log("pi/project set settings: " + JSON.stringify(payload));
     }
 }

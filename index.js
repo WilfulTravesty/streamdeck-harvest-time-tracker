@@ -6,8 +6,26 @@ let polling = false;
 let globalSettings = {};
 let cache = {};  // cache of last gets, for fast redraw when switching pages
 
+const secondsBetweenUpdates = 10;
+let nextUpdateTimeUnix = Date.now();
 
-function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, inInfo) {
+const debug = {
+    // plugin actions like registering, config, or creating/deleting buttons
+    plugin: false,
+    // html calls and responses
+    html: false,
+    // button state manipulation
+    tasks: false,
+    // task button labels
+    labels: false,
+    // button label calculations and decisions
+    calculations: false,
+    // init loop
+    init: false
+}
+
+// noinspection JSUnusedLocalSymbols
+function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, _inInfo) {
     websocket = new WebSocket('ws://127.0.0.1:' + inPort);
 
     websocket.onopen = function () {
@@ -17,7 +35,7 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
 
         websocket.send(JSON.stringify(json));
 
-        console.log("registered plugin");
+        if (debug.plugin) console.log("registered plugin");
         refreshButtons();
     }
 
@@ -26,15 +44,13 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
         const jsonObj = JSON.parse(evt.data);
         const {event, context, payload, action} = jsonObj;
 
-        console.log("incoming action " + event + " for " + action);
+        if (debug.plugin) console.log("incoming action " + event + " for " + action);
 
         switch (event) {
             case 'keyDown': {
                 const settings = payload["settings"]
-                console.log("pressed " + settings["label"]);
-                toggleButtonState(context, settings).then(() => {
-                    // nothing
-                });
+                if (debug.plugin) console.log("pressed " + settings["label"]);
+                toggleButtonState(context, settings).then();
             }
                 break
 
@@ -43,27 +59,28 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
                 const coordinates = payload["coordinates"]
                 if (!payload["isInMultiAction"]) {
                     addButton(context, settings, coordinates);
-                    console.log("button added to row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
+                    if (debug.plugin) console.log("button added to row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
                 }
             }
                 break
 
             case 'willDisappear': {
                 const coordinates = payload["coordinates"]
-                console.log("button removed from row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
+                if (debug.plugin) console.log("button removed from row " + (coordinates["row"] + 1) + " column " + (coordinates["column"] + 1));
                 if (!payload["isInMultiAction"]) removeButton(context);
             }
                 break
 
-            case 'didReceiveSettings': { // anything could have changed, pull it, add it, and refresh.
+            case 'didReceiveSettings': {
+                // anything could have changed, pull it, add it, and refresh.
                 const settings = payload["settings"]
                 const coordinates = payload["coordinates"]
-                console.log(">>> received settings for button " + context + " labeled " + JSON.stringify(settings["label"]));
+                if (debug.plugin) console.log(">>> received settings for button " + context + " labeled " + JSON.stringify(settings["label"]));
                 if (!payload["isInMultiAction"]) {
                     removeButton(context);
                     addButton(context, settings, coordinates);
                     refreshButtons();
-                    console.log("plugin received settings: " + JSON.stringify(payload["settings"]));
+                    if (debug.plugin) console.log("plugin received settings: " + JSON.stringify(payload["settings"]));
                 }
             }
                 break
@@ -75,14 +92,34 @@ function connectElgatoStreamDeckSocket(inPort, inPluginUUID, inRegisterEvent, in
 
             case 'didReceiveGlobalSettings':
                 globalSettings = jsonObj['payload']['settings'];
-                console.log("plugin received global settings: " + JSON.stringify(globalSettings));
+                if (debug.plugin) console.log("plugin received global settings: " + JSON.stringify(globalSettings));
                 break
 
             case 'titleParametersDidChange':
-                //console.log("plugin title changed")
+                if (debug.plugin) console.log("plugin title changed")
                 break
         }
     }
+}
+
+/** Delay helper function. */
+function delay(timeMs) {
+    return new Promise(resolve => setTimeout(resolve, timeMs));
+}
+
+/** Wait, then update buttons. */
+function waitThenUpdateButtons() {
+    // if regular update is within 2 seconds, just let it handle the update
+    if ((nextUpdateTimeUnix - Date.now()) < 2000) return;
+
+    nextUpdateTimeUnix = Date.now() + (5 * 1000);  // at least defer auto-update until we're done
+    if (debug.init) console.log(`*** next update defer time ${nextUpdateTimeUnix}`);
+    delay(1000)  // allow time for Harvest to update server
+        .then(() => {
+            refreshButtons();
+            nextUpdateTimeUnix = Date.now() + (secondsBetweenUpdates * 1000); // set real "next" auto-update time
+            if (debug.init) console.log(`*** next update time ${nextUpdateTimeUnix}`);
+        })
 }
 
 /**
@@ -101,48 +138,88 @@ async function toggleButtonState(context, settings) {
     if (settings["type"] !== "timer") return Promise.resolve(0);
 
     return getCurrentActiveHarvestTimeEntry(accountId, accessToken, "is_running=true")
-        .then(response => {
-            if (response.status !== 200) {
-                //console.log(response.text());
-                throw `bad rc=${response.status}`;
-            } else {
-                // can only call .json() ONCE per response
-                return response.json();
-            }
-        })
         .then(entryData => {
             if (entryData["time_entries"].length === 0) {
                 // Nothing is running, so start one
-                console.log("no task is currently running, so start a new one");
-                startHarvestTask(context, settings).then(() => refreshButtons());
-
-            } else if (entryData["time_entries"][0]["project"]["id"] === settings["projectId"] && entryData["time_entries"][0]["task"]["id"] === settings["taskId"]) {
+                if (debug.tasks) console.log("no task is currently running, so start a new one");
+                startHarvestTask(context, settings).then(() => { waitThenUpdateButtons() });
+            } else if (entryData["time_entries"][0]["project"]["id"].toString() === settings["projectId"] &&
+                entryData["time_entries"][0]["task"]["id"].toString() === settings["taskId"]) {
                 // The one running is "this one", stop it
-                console.log("have data matching an active button, so stop it");
-                stopHarvestTask(context, settings, entryData["time_entries"][0]["id"]).then(() => refreshButtons());
-
+                if (debug.tasks) console.log("have data matching an active button, so stop it");
+                stopHarvestTask(context, settings, entryData["time_entries"][0]["id"]).then(() => { waitThenUpdateButtons() });
             } else {
                 // Some other one is running. Just start the new one, old one will stop.
-                console.log("running task does not match this button task, so start a new one");
-                startHarvestTask(context, settings).then(() => refreshButtons());
+                if (debug.tasks) console.log("running task does not match this button task, so start a new one");
+                startHarvestTask(context, settings).then(() => { waitThenUpdateButtons() });
             }
         })
         .catch(error => {
             // set all "total" buttons on this account to an error
             console.log(`failed to fetch current time entry: ${error}`);
-            currentButtons.forEach((settings, context) => {
-                if (settings === undefined || settings["type"] !== "timer") return;
-                if (accountId === settings['accountId']) {
-                    updateButton(context, {
+            currentButtons.forEach((buttonSettings, buttonContext) => {
+                if (buttonSettings === undefined || buttonSettings["type"] !== "timer") return;
+                if (accountId === buttonSettings['accountId']) {
+                    updateButton(buttonContext, {
                         hours: 0,
-                        label: settings["label"],
+                        label: buttonSettings["label"],
                         state: 0,
                         showTime: false
                     });
-                    showAlert(context, `task time fetch failed with error ${error}`);
+                    showAlert(buttonContext, `task time fetch 2 failed with error ${error}`);
                 }
-            })
+            });
+            nextUpdateTimeUnix = Date.now() + secondsBetweenUpdates;
+            if (debug.init) console.log(`*** next update time ${nextUpdateTimeUnix}`);
         })
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+// HTML generic request handler
+// ----------------------------------------------------------------------------------------------------------------
+/**
+ * Generic function to fetch HTML data. Returns a Promise that throws an Error exception if response status
+ * case is not 200, else returns the Response object's JSON.
+ *
+ * @param method GET, POST, PUT, DELETE, etc
+ * @param url the URL to process
+ * @param headers the headers to include in the request
+ * @param [body] optional body for POST, PUT requests
+ * @param [expectedStatus] optional response status expected if not 200 (e.g. 201 for Created)
+ */
+function htmlRequest(method, url, headers, body, expectedStatus = 200) {
+    let req;
+    if (method === 'GET') {
+        req = fetch(url, {method: method, headers: headers})
+    } else {
+        req = fetch(url, {method: method, headers: headers, body: body})
+    }
+
+    return req.then(response => {
+        if (response.status !== expectedStatus) {
+            console.log(response.text());
+            throw new Error(`bad rc=${response.status}: ${response.text()}`);
+        } else {
+            return response.json();
+        }
+    });
+}
+
+/**
+ * Call htmlRequest, but on error update button label with static message
+ */
+function htmlRequestOrButtonError(context, label, method, url, headers, body) {
+    return htmlRequest(method, url, headers, body)
+        .catch(error => {
+            console.log(`failed to start time entry: ${error}`);
+            updateButton(context, {
+                hours: 99999,
+                label: label,
+                state: 0,
+                showTime: false
+            });
+            throw error;
+        });
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -156,7 +233,7 @@ async function toggleButtonState(context, settings) {
 function requestButtonSettings(uuid) {
     // Request the global settings of the plugin. Will receive a 'didReceiveGlobalSettings' event/message.
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({event: 'getSettings', context: uuid}));
-    //console.log("plugin requested settings for " + uuid);
+    if (debug.plugin) console.log("plugin requested settings for " + uuid);
 }
 
 /**
@@ -165,7 +242,7 @@ function requestButtonSettings(uuid) {
  * @param {string} context
  */
 function removeButton(context) {
-    if (currentButtons.delete(context)) console.log("removed button " + context);
+    if (currentButtons.delete(context) && debug.plugin) console.log("removed button " + context);
 }
 
 /**
@@ -178,13 +255,10 @@ function removeButton(context) {
 function addButton(context, settings, coordinates) {
     settings["row"] = coordinates["row"];
     settings["column"] = coordinates["column"];
-    console.log(`added button ${context} with label '${settings["label"]}' and settings ${JSON.stringify(settings)}`);
+    if (debug.tasks || debug.labels) console.log(`added button ${context} with label '${settings["label"]}' and settings ${JSON.stringify(settings)}`);
     currentButtons.set(context, settings);
-    //setTitle(context, `loading\n\n${settings["label"]}`);
     refreshButtonFromCache(settings["row"], settings["column"]);
-    initPolling().then(() => {
-        // nothing
-    });
+    initPolling().then();
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -198,16 +272,24 @@ async function initPolling() {
     if (polling) return;
 
     polling = true;
-    console.log("beginning to poll");
+    if (debug.plugin || debug.init) console.log("beginning to poll");
     refreshButtons();
     while (currentButtons.size > 0) { // eslint-disable-line no-unmodified-loop-condition
         // The rate limit for general API requests is 100 requests per 15 seconds.
-        // The rate limit for Reports API requests is 100 requests per 15 minutes.
-        await new Promise(r => setTimeout(r, 10000));
+        if (debug.init) console.log(`waiting 10000 ms for next update time ${nextUpdateTimeUnix}`);
+        await delay(10000);
+        let extraWait = nextUpdateTimeUnix - Date.now();
+        if (debug.init) console.log(`after wait time is now ${Date.now()} with ${extraWait} extra wait needed`);
+        if (extraWait > 0) {
+            if (debug.init) console.log(`waiting ${extraWait} ms more`);
+            await delay(extraWait);
+        }
         refreshButtons();
+        nextUpdateTimeUnix = Date.now() + (secondsBetweenUpdates * 1000);
+        if (debug.init) console.log(`next update time ${nextUpdateTimeUnix}`);
     }
 
-    console.log("stopping polling, no buttons remain");
+    if (debug.plugin || debug.init) console.log("stopping polling, no buttons remain");
     polling = false;
 }
 
@@ -215,14 +297,14 @@ async function initPolling() {
 // Button label update functions
 // ------------------------------------------------------------------------------------------------------------------
 
-// function decToHM(decHours) {
-//     let hrs = Math.floor(decHours);
-//     let min = Math.ceil((decHours - hrs) * 60.0);
-//     return hrs + ":" + min.toString(10).padStart(2, '0');
-// }
+function decToHM(decHours) {
+    let hrs = Math.floor(decHours);
+    let min = Math.ceil((decHours - hrs) * 60.0);
+    return hrs + ":" + min.toString(10).padStart(2, '0');
+}
 
 /**
- * Process all entries for this account and sum their times for each project, then update the button labels.
+ * Process all entries for this account and sum their times for each project, then update the button calculations.
  * Uses JSON data from global "cache" variable.
  *
  * @param {string} accountId
@@ -242,23 +324,23 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
     json["time_entries"].forEach(entry => {
         let hours = entry["rounded_hours"];
         totals["weeklyHours"] += hours;
-        //console.log(`adding ${decToHM(hours)} for ${entry["project"]["name"]} ${entry["task"]["name"]} => ${decToHM(totals["weeklyHours"])}`);
+        if (debug.calculations) console.log(`adding ${decToHM(hours)} for ${entry["project"]["name"]} ${entry["task"]["name"]} => ${decToHM(totals["weeklyHours"])}`);
 
-        //console.log(`${entry["spent_date"]} vs ${totals["today"]}`)
+        if (debug.calculations) console.log(`${entry["spent_date"]} vs ${totals["today"]}`)
         if (entry["spent_date"] === totals["today"]) {
             totals["dailyHours"] += hours;
-            //console.log(`adding ${hours} hours for daily => ${totals["dailyHours"]}`);
+            if (debug.calculations) console.log(`adding ${hours} hours for daily => ${totals["dailyHours"]}`);
         }
 
         let projectKey = entry["project"]["id"];
         if (totals["project"][projectKey] === undefined) totals["project"][projectKey] = 0.0;
         totals["project"][projectKey] += hours;
-        //console.log(`adding ${hours} hours for ${projectKey}`);
+        if (debug.calculations) console.log(`adding ${hours} hours for ${projectKey}`);
 
         let clientKey = entry["client"]["id"];
         if (totals["client"][clientKey] === undefined) totals["client"][clientKey] = 0.0;
         totals["client"][clientKey] += hours;
-        //console.log(`adding ${hours} hours for client ${entry["client"]["name"]}`);
+        if (debug.calculations) console.log(`adding ${hours} hours for client ${entry["client"]["name"]}`);
     })
 
     // Daily total buttons
@@ -282,12 +364,12 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
                 value = totals["client"][key];
             }
             if (settings["type"] === "daily") {
-                // key = "daily";
+                key = "daily";
                 value = totals["dailyHours"];
             }
-            //console.log("total hours = " + value + " for " + settings["type"] + " " + key);
+            if (debug.calculations) console.log("total hours = " + value + " for " + settings["type"] + " " + key);
             let label = settings["label"];
-            //console.log(`label1 = "${label}" for ${accountActive} ${context}`);
+            if (debug.calculations) console.log(`label1 = "${label}" for ${accountActive} ${context}`);
             updateButton(context, {
                 hours: value,
                 label: label,
@@ -307,9 +389,9 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
             if (settings === undefined) return;
             if (settings["type"] !== "weekly") return;
 
-            //console.log(`total hours = ${totals["weeklyHours"]} for ${settings["type"]}`);
+            if (debug.calculations) console.log(`total hours = ${totals["weeklyHours"]} for ${settings["type"]}`);
             let label = settings["label"];
-            //console.log(`label2 = "${label}" for ${accountActive} ${context}`);
+            if (debug.calculations) console.log(`label2 = "${label}" for ${accountActive} ${context}`);
             updateButton(context, {
                 hours: totals["weeklyHours"],
                 label: label,
@@ -322,7 +404,7 @@ function setTotalButtonLabels(accountId, {totals, isLastAccount, row, column} = 
 }
 
 /**
- * Update the labels on the task buttons, from the cached data.
+ * Update the calculations on the task buttons, from the cached data.
  *
  * @param {string} accountId
  * @param {number | undefined} row may be undefined, else only update button in the specified row and column
@@ -335,7 +417,7 @@ function setTaskButtonLabels(accountId, row, column) {
         // Should only ever be 1 active entry
         let entryData = entries[0];
 
-        //console.log(`got data: ` + JSON.stringify(entryData))
+        if (debug.html) console.log(`got data: ` + JSON.stringify(entryData))
 
         //Loop over all the buttons and update as appropriate
         currentButtons.forEach((settings, context) => {
@@ -346,7 +428,7 @@ function setTaskButtonLabels(accountId, row, column) {
                 }
 
                 if (accountId === settings["accountId"] && entryData["project"]["id"].toString() === settings["projectId"] && entryData["task"]["id"].toString() === settings["taskId"]) {
-                    //console.log("button " + settings.label + " is on")
+                    if (debug.calculations) console.log("button " + settings.label + " is on")
                     updateButton(context, {
                         hours: entryData["hours"],
                         label: settings["label"],
@@ -354,7 +436,7 @@ function setTaskButtonLabels(accountId, row, column) {
                         showTime: true
                     });
                 } else { //if not, make sure it's 'off'
-                    //console.log("button " + settings.label + " is off")
+                    if (debug.calculations) console.log("button " + settings.label + " is off")
                     updateButton(context, {
                         hours: 0,
                         label: settings["label"],
@@ -365,7 +447,7 @@ function setTaskButtonLabels(accountId, row, column) {
             }
         })
     } else {
-        console.log("no active time entries found on this account");
+        if (debug.tasks) console.log("no active time entries found on this account");
 
         //Loop over all the buttons on this account and mark them "off"
         currentButtons.forEach((settings, context) => {
@@ -376,7 +458,7 @@ function setTaskButtonLabels(accountId, row, column) {
 
                 // Only process configured, individual task timer buttons here
                 if (accountId === settings["accountId"]) {
-                    //console.log("button " + settings.label + " is off")
+                    if (debug.calculations) console.log("button " + settings.label + " is off")
                     updateButton(context, {
                         hours: 0,
                         label: settings["label"],
@@ -396,7 +478,7 @@ function setTaskButtonLabels(accountId, row, column) {
  * @param {number} column
  */
 function refreshButtonFromCache(row, column) {
-    console.log(`refreshing button at row ${row} and column ${column} from cache`);
+    if (debug.calculations) console.log(`refreshing button at row ${row} and column ${column} from cache`);
 
     // Check if no data yet
     if (cache["accountsMap"] === undefined) return;
@@ -408,10 +490,10 @@ function refreshButtonFromCache(row, column) {
 
         // Process each account, then find buttons that use data from that account, while keeping up the weekly total
         let accountCounter = 0;
-        cache["accountsMap"].forEach((accessToken, accountId) => {
-            //console.log(`processing cached account ${accountId}`);
+        cache["accountsMap"].forEach((_accessToken, accountId) => {
+            if (debug.calculations) console.log(`processing cached account ${accountId} for totals`);
             if (cache[`entriesPayload-${accountId}`] !== undefined) {
-                //console.log("calling cached setTotalButtonLabels()");
+                if (debug.calculations) console.log("calling cached setTotalButtonLabels()");
                 accountCounter++;
                 setTotalButtonLabels(accountId, {
                     totals: totals,
@@ -436,8 +518,8 @@ function refreshButtonFromCache(row, column) {
     } // if haveTotals
 
     // Process task timer buttons
-    cache["accountsMap"].forEach((accessToken, accountId) => {
-        //console.log(`processing cached account ${accountId}`);
+    cache["accountsMap"].forEach((_accessToken, accountId) => {
+        if (debug.calculations) console.log(`processing cached account ${accountId} for timer`);
         if (cache[`runningPayload-${accountId}`] !== undefined) {
             setTaskButtonLabels(accountId, row, column);
         } else {
@@ -461,12 +543,13 @@ function refreshButtonFromCache(row, column) {
  * Fetch new data and update all buttons for all Harvest accounts.
  */
 function refreshButtons() {
-    //console.log(`refreshing buttons`);
+    if (debug.calculations) console.log(`refreshing buttons`);
 
     // Get the list of unique accounts + access tokens to query
     let accounts = new Map();
     let haveTotals = false;
-    currentButtons.forEach((settings, context, map) => {
+    // noinspection JSUnusedLocalSymbols
+    currentButtons.forEach((settings, _context, _map) => {
         if (settings === undefined) return;
 
         let accountId = settings["accountId"];
@@ -481,7 +564,7 @@ function refreshButtons() {
         if (settings["type"] === "client") haveTotals = true;
     })
 
-    //console.log("we have " + accounts.size + " accounts to query");
+    if (debug.tasks) console.log("we have " + accounts.size + " accounts to query");
     cache["accountCount"] = accounts.size;
     cache["accountsMap"] = accounts;
 
@@ -504,23 +587,16 @@ function refreshButtons() {
         // Process each account, then find buttons that use data from that account, while keeping up the weekly total
         let accountCounter = 0;
         accounts.forEach((accessToken, accountId) => {
-            //console.log(`processing account ${accountId}`);
+            if (debug.tasks) console.log(`processing account ${accountId}`);
             const headers = getHeaders(accountId, accessToken);
 
             const url = `${harvestBaseUrl}/time_entries?from=${from}&to=${to}&per_page=100`;
-            console.log(`totals GET ${url}`);
-            fetch(url, {method: 'GET', headers: headers})
-                .then(response => {
-                    if (response.status !== 200) {
-                        //console.log(response.text());
-                        throw `bad rc=${response.status}`;
-                    } else {
-                        return response.json();
-                    }
-                })
+            if (debug.html) console.log(`totals GET ${url}`);
+
+            htmlRequest('GET', url, headers)
                 .then(json => {
                     cache[`entriesPayload-${accountId}`] = json;
-                    //console.log("calling setTotalButtonLabels()");
+                    if (debug.tasks) console.log("calling setTotalButtonLabels()");
                     accountCounter++;
                     setTotalButtonLabels(accountId, {
                         totals: totals,
@@ -552,42 +628,18 @@ function refreshButtons() {
 
     // Process task timer buttons (not totals buttons)
     accounts.forEach((accessToken, accountId) => {
-        //console.log(`processing account ${accountId}`);
+        if (debug.tasks) console.log(`processing account ${accountId} for timers`);
 
-        //Get the current entry for this account
-        // How to access settings which is inside the buttons list and not the accounts list, and
-        // how to query the accounts when we want the day total for a button??
-        // let timeType = settings["timerType"] ?? "task";
-        let arguments = "is_running=true";
-        // if (timeType === "day") {
-        //     const today = new Date();
-        //     let todayDate = today.getFullYear() + "-" + leadingZero(today.getMonth() + 1) + "-" + leadingZero(today.getDate());
-        //     arguments = `task_id=${settings["taskId"]}&from=${todayDate}&per_page=100`;
-        // } else if (timeType === "week") {
-        //     const today = new Date();
-        //     const first = today.getDate() - today.getDay() + 1;
-        //     const monday = new Date(today.setDate(first)); // need 2017-03-21
-        //     let mondayDate = monday.getFullYear() + "-" + leadingZero(monday.getMonth() + 1) + "-" + leadingZero(monday.getDate());
-        //     arguments = `task_id=${settings["taskId"]}&from=${mondayDate}&per_page=100`;
-        // }
-
-        getCurrentActiveHarvestTimeEntry(accountId, accessToken, arguments)
-            .then(response => {
-                if (response.status !== 200) {
-                    //console.log(response.text());
-                    throw `bad rc=${response.status}`;
-                } else {
-                    return response.json();   // can only call ONCE per response
-                }
-            })
+        let args = "is_running=true";
+        getCurrentActiveHarvestTimeEntry(accountId, accessToken, args)
             .then(json => {
                 cache[`runningPayload-${accountId}`] = json;
-                //console.log(`we just cached JSON ${JSON.stringify(json)}`);
+                if (debug.html) console.log(`we just cached JSON ${JSON.stringify(json)}`);
                 setTaskButtonLabels(accountId, undefined, undefined);
             })
             .catch(error => {
                 // set all "total" buttons on this account to an error
-                console.log(`failed to fetch current time entry: ${error}`);
+                if (debug.html) console.log(`failed to fetch current time entry: ${error}`);
                 currentButtons.forEach((settings, context) => {
                     if (settings === undefined || settings["type"] !== "timer") return;
                     if (accountId === settings['accountId']) {
@@ -597,7 +649,7 @@ function refreshButtons() {
                             state: 0,
                             showTime: false
                         })
-                        showAlert(context, `task time fetch failed with error ${error}`).then();
+                        showAlert(context, `task time fetch 1 failed with error ${error}`).then();
                     }
                 })
             })
@@ -611,17 +663,17 @@ function refreshButtons() {
 /**
  * Get the current time entries and return the JSON for them. Throws error on failure.
  *
- * @param {string} accountId
- * @param {string} accessToken
- * @param {string} arguments
+ * @param {string} accountId the account ID
+ * @param {string} accessToken the user access token for the account
+ * @param {string} args arguments to append to URL
  *
  * @returns {Promise<any>}
  */
-async function getCurrentActiveHarvestTimeEntry(accountId, accessToken, arguments) {
+async function getCurrentActiveHarvestTimeEntry(accountId, accessToken, args) {
     const headers = getHeaders(accountId, accessToken);
-    let url = `${harvestBaseUrl}/time_entries?${arguments}`;
-    console.log(`GET ${url}`);
-    return await fetch(url, {method: 'GET', headers: headers});
+    let url = `${harvestBaseUrl}/time_entries?${args}`;
+    if (debug.html) console.log(`GET ${url}`);
+    return htmlRequest('GET', url, headers);
 }
 
 /**
@@ -639,34 +691,25 @@ async function startHarvestTask(context, settings) {
     let projectId = settings['projectId'];
     let taskId = settings['taskId'];
 
-    console.log(`account ${accountId} access ${accessToken} project ${projectId} task ${taskId}`)
+    if (debug.tasks) console.log(`account ${accountId} access ${accessToken} project ${projectId} task ${taskId}`)
 
     const today = new Date();  // need 2017-03-21
-    let todayDate = today.getFullYear() + "-" + leadingZero(today.getMonth() + 1) + "-" + leadingZero(today.getDate());
+    const todayDate = today.getFullYear() + "-" + leadingZero(today.getMonth() + 1) + "-" + leadingZero(today.getDate());
 
-    // Quickly set it to 0:00 just so it shows "active"
+    // Quickly set it to 0:00 just so it shows "active" until next refresh
     updateButton(context, {
         hours: 0,
         label: settings["label"],
         state: 1,
         showTime: true
     });
-    let url = `${harvestBaseUrl}/time_entries`;
-    return await fetch(url, {
-        method: 'POST',   // returns a SINGLE time entry, not a list
-        headers: headers,
-        body: JSON.stringify({project_id: parseInt(projectId), task_id: parseInt(taskId), spent_date: todayDate})
-    })
-        .then(response => {
-            if (response.status !== 201) {    // returns 201 Created
-                //console.log(response.text());
-                throw `bad rc=${response.status}`;
-            } else {
-                return response.json();  // can only call ONCE per response
-            }
-        })
+
+    const url = `${harvestBaseUrl}/time_entries`;
+    const body = JSON.stringify({project_id: parseInt(projectId), task_id: parseInt(taskId), spent_date: todayDate});
+    // POST to this URL returns a SINGLE time entry, not a list!
+    htmlRequest('POST', url, headers, body, 201)
         .then(json => {
-            console.log(`new time id ${json["id"]}`);
+            if (debug.tasks) console.log(`new time id ${json["id"]}`);
         })
         .catch(error => {
             console.log(`failed to start time entry: ${error}`);
@@ -695,38 +738,23 @@ async function stopHarvestTask(context, settings, timeId) {
     let accessToken = settings['accessToken'];
     let headers = getHeaders(accountId, accessToken)
 
+    // Set the button back to inactive until next refresh
     updateButton(context, {
         hours: 0,
         label: settings["label"],
         state: 0,
         showTime: false
     });
-    return await fetch(`${harvestBaseUrl}/time_entries/${timeId}/stop`, {method: 'PATCH', headers: headers})
-        .then(response => {
-            if (response.status !== 200) {
-                //console.log(response.text());
-                throw `bad rc=${response.status}`;
-            } else {
-                return response.json();  // can only call ONCE per response
-            }
-        })
+
+    const url = `${harvestBaseUrl}/time_entries/${timeId}/stop`;
+    return htmlRequestOrButtonError(context, settings["label"], 'PATCH', url, headers)
         .then(() => {
-            console.log(`stopped timer ${timeId}`);
+            if (debug.tasks) console.log(`stopped timer ${timeId}`);
         })
-        .catch(error => {
-            console.log(`failed to start time entry: ${error}`);
-            updateButton(context, {
-                hours: 99999,
-                label: settings["label"],
-                state: 0,
-                showTime: false
-            });
-            throw error;
-        });
 }
 
 // ----------------------------------------------------------------------------------------------------------------
-// Functions to update StreamDeck buttons
+// Functions to update StreamDeck buttons via web API
 // ----------------------------------------------------------------------------------------------------------------
 
 /**
@@ -739,7 +767,6 @@ async function stopHarvestTask(context, settings, timeId) {
 function formatElapsed(hoursRunning) {
     const hours = Math.floor(hoursRunning);
     const minutes = Math.floor(((hoursRunning - hours) * 60.0));
-    //const seconds = parseInt(((hoursRunning - hours - (minutes / 60.0)) * 3600));
     return `${hours}:${leadingZero(minutes)}`;
 }
 
@@ -789,7 +816,7 @@ function updateButton(context, {hours, label, state = 0, showTime = false, sep =
 }
 
 /**
- * Set streamdeck button state.
+ * Set Streamdeck button state.
  *
  * @param {string} context
  * @param {number} state - the state from the manifest state list
@@ -809,7 +836,7 @@ async function setState(context, state) {
  * @param {string} title
  */
 async function setTitle(context, title) {
-    //console.log(`updating button ${context} with label "${title}"`)
+    if (debug.labels) console.log(`updating "${currentButtons.get(context)["type"]}" button ${context} with label "${title}"`)
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({
         event: 'setTitle', context: context, payload: {
             title: title
@@ -825,6 +852,8 @@ async function setTitle(context, title) {
  */
 async function showAlert(context, reason = "unknown") {
     if (reason) console.log(`ALERT!!! showing alert for context ${context} because ${reason}`);
+    else if (debug.labels) console.log(`ALERT!!! showing alert for context ${context}`);
+
     websocket && (websocket.readyState === 1) && websocket.send(JSON.stringify({
         event: 'showAlert', context: context
     }));
