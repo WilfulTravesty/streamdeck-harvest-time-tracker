@@ -236,7 +236,7 @@ function updateClientsNow(data) {
 
         let clientSelect = clearClients();
         if (settings["clientId"] === undefined) {
-            // if no current project selected, then put a blank entry first, so user has to select and trigger setProject()
+            // if no current project selected, then put a blank entry first??
             console.log("adding <select> to client list");
             clientSelect.add(new Option("<select>", 0));
         }
@@ -283,6 +283,22 @@ function setAccessToken() {
     setGlobalSettings(uuid);
     setButtonSettings(uuid);
     update();
+}
+
+function setLabel() {
+    let label = document.getElementById('label').value;
+    console.log(`set label to ${label}`);
+    settings["label"] = label;
+    //update();
+    setButtonSettings(uuid)
+}
+
+function setClient() {
+    let clientId = document.getElementById('clientId').value;
+    console.log(`set client ID to ${clientId}`);
+    settings["clientId"] = clientId;
+    //update();
+    setButtonSettings(uuid)
 }
 
 // -----------------------------------------------------------------------------------------------------------------------

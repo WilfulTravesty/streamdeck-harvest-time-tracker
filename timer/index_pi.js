@@ -382,6 +382,20 @@ function setAccessToken() {
     update();
 }
 
+function setLabel() {
+    let label = document.getElementById('label').value;
+    console.log(`set label to ${label}`);
+    settings["label"] = label;
+    update()
+}
+
+function setProject() {
+    let projectId = getProjectsHandle().value;
+    console.log(`set project ID to ${projectId}`);
+    settings["projectId"] = projectId;
+    update()
+}
+
 function setTask() {
     let projectId = getProjectsHandle().value;
     let taskId = getTaskHandle().value;

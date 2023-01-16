@@ -231,6 +231,13 @@ function setAccessToken() {
     update();
 }
 
+function setLabel() {
+    let label = document.getElementById('label').value;
+    console.log(`set label to ${label}`);
+    settings["label"] = label;
+    update()
+}
+
 // -----------------------------------------------------------------------------------------------------------------------
 
 function requestGlobalSettings(forUUID) {

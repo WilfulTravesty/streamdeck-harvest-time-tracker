@@ -581,8 +581,9 @@ function refreshButtons() {
         mondayDateObj.setDate(mondayDateObj.getDate() - (mondayDateObj.getDay() + 6) % 7);
         const endOfWeek = new Date(mondayDateObj);
         endOfWeek.setDate(endOfWeek.getDate() + 7);
-        const from = mondayDateObj.getFullYear() + leadingZero(mondayDateObj.getMonth() + 1) + leadingZero(mondayDateObj.getDate());
-        const to = endOfWeek.getFullYear() + leadingZero(endOfWeek.getMonth() + 1) + leadingZero(endOfWeek.getDate());
+
+        const from = `${mondayDateObj.getFullYear()}${leadingZero(mondayDateObj.getMonth() + 1)}${leadingZero(mondayDateObj.getDate())}`
+        const to = `${endOfWeek.getFullYear()}${leadingZero(endOfWeek.getMonth() + 1)}${leadingZero(endOfWeek.getDate())}`
 
         // Process each account, then find buttons that use data from that account, while keeping up the weekly total
         let accountCounter = 0;
